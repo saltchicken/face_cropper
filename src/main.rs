@@ -16,9 +16,9 @@ struct Args {
     #[arg(short, long)]
     input: PathBuf,
 
-    /// Output image path
-    #[arg(short, long, default_value = "output.png")]
-    output: PathBuf,
+
+    #[arg(short, long)]
+    output: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -51,9 +51,9 @@ fn main() -> Result<()> {
     detector.set_slide_window_step(4, 4);
 
     let gray = img.to_luma8();
-    let mut image_data = ImageData::new(&gray, width, height);
+    let image_data = ImageData::new(&gray, width, height);
 
-    let faces: Vec<FaceInfo> = detector.detect(&mut image_data);
+    let faces: Vec<FaceInfo> = detector.detect(&image_data);
 
     // Validation
     if faces.is_empty() {
@@ -84,12 +84,34 @@ fn main() -> Result<()> {
         origin_y = height - crop_size;
     }
 
+
+    let output_path = match args.output {
+        Some(path) => path,
+        None => {
+            let stem = args
+                .input
+                .file_stem()
+                .context("Input file has no file name")?;
+            let mut new_filename = stem.to_os_string();
+            new_filename.push("_cropped");
+
+            if let Some(ext) = args.input.extension() {
+                new_filename.push(".");
+                new_filename.push(ext);
+            }
+
+            args.input.with_file_name(new_filename)
+        }
+    };
+
     // Crop and Save
     println!("Processing {:?} -> Face at {:?}", args.input, bbox);
     let cropped_img = img.crop(origin_x, origin_y, crop_size, crop_size);
     cropped_img
-        .save(&args.output)
+        .save(&output_path)
         .context("Failed to save output")?;
+
+    println!("Saved to {:?}", output_path);
 
     // The temp file is automatically deleted when 'model_temp_file' goes out of scope here.
     Ok(())
